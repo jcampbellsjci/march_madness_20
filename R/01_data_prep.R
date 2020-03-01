@@ -1,13 +1,24 @@
+# Goal of this script is to just clean the data and put it into a
+# good modeling format.
+# 1. Season averages are found for each team for all box-score stats
+# 2. Find season outcome totals (wins and losses)
+# 3. Combine data and find shooting ratios
+
+#### Data Load ####
+
 library(tidyverse)
 
-setwd("C:/Users/jcamp/OneDrive/Documents/Basketball Projects/march_madness_20")
+setwd("C:/Users/jcamp/OneDrive/Documents/Basketball Projects/march_madness")
 
+# Loading up the files we'll use
 teams <- read_csv("data/MDataFiles_Stage1/MTeams.csv")
 seeds <- read_csv("data/MDataFiles_Stage1/MNCAATourneySeeds.csv")
 rs_results <- read_csv("data/MDataFiles_Stage1/MRegularSeasonDetailedResults.csv")
 tourney_results <- read_csv("data/MDataFiles_Stage1/MNCAATourneyCompactResults.csv")
 sample_sub <- read_csv("data/MSampleSubmissionStage1_2020.csv")
 
+
+#### Data Prep ####
 
 # Finding the average box-score results for each team and each season
 # Data is separated by winners and losers
@@ -43,12 +54,41 @@ outcome <- rs_results %>%
                group_by(LTeamID, Season) %>%
                summarize(L = n()), by = c("WTeamID" = "LTeamID", "Season"))
 
+# Interested in finding wins and losses going into the tournament
+outcome_5 <- rs_results %>%
+  # Rename all winners as 1 and all losers as 2
+  rename_at(.vars = vars(starts_with("W")),
+            .funs = ~ gsub(pattern = "W", replacement = "team1_", x = .)) %>%
+  rename_at(.vars = vars(starts_with("L")),
+            .funs = ~ gsub(pattern = "L", replacement = "team2_", x = .)) %>%
+  # Binding a tibble where we do the exact opposite
+  # This allows a team to be listed as 1 for wins AND losses
+  bind_rows(rs_results %>%
+              rename_at(.vars = vars(starts_with("W")),
+                        .funs = ~ gsub(pattern = "W",
+                                       replacement = "team2_", x = .)) %>%
+              rename_at(.vars = vars(starts_with("L")),
+                        .funs = ~ gsub(pattern = "L",
+                                       replacement = "team1_", x = .))) %>%
+  select(DayNum, Season, team1_TeamID, team1_Score, team2_Score) %>%
+  mutate(outcome = ifelse(team1_Score - team2_Score > 0, "W", "L")) %>%
+  # Grouping by team1 and season
+  group_by(team1_TeamID, Season) %>%
+  top_n(5, DayNum) %>%
+  group_by(team1_TeamID, Season, outcome) %>%
+  summarize(result = n()) %>%
+  spread(key = outcome, value = result) %>%
+  mutate_at(.vars = vars(W, L),
+            .funs = ~ ifelse(is.na(.), 0, .)) %>%
+  mutate(WP_5 = W / (W + L)) %>%
+  select(team1_TeamID, Season, WP_5)
 
 # Combining data sets into a season summary data set
 season_summary <- teams %>%
   inner_join(seeds, by = "TeamID") %>%
-  inner_join(outcome, by = c("TeamID" = "WTeamID", "Season")) %>%
-  inner_join(bs_avg, by = c("TeamID" = "team1_TeamID", "Season")) %>%
+  left_join(outcome, by = c("TeamID" = "WTeamID", "Season")) %>%
+  left_join(outcome_5, by = c("TeamID" = "team1_TeamID", "Season")) %>%
+  left_join(bs_avg, by = c("TeamID" = "team1_TeamID", "Season")) %>%
   rename_at(.vars = vars(starts_with("team1")), 
             .funs = ~ gsub(pattern = "team1_", replacement = "", x = .)) %>%
   rename_at(.vars = vars(starts_with("team2")), 
@@ -63,4 +103,8 @@ season_summary <- teams %>%
   # Getting seeds to be numeric
   # Have to remove region character
   mutate(Seed = substring(Seed, 2)) %>%
-  mutate(Seed = as.numeric(gsub(pattern = "a|b", replacement = "", x = Seed)))
+  mutate(Seed = as.numeric(gsub(pattern = "a|b", replacement = "",
+                                x = Seed))) %>%
+  filter(Season >= 2000)
+
+write_csv(season_summary, path = "data/our_data/starter_file.csv")
