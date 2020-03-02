@@ -105,6 +105,45 @@ season_summary <- teams %>%
   mutate(Seed = substring(Seed, 2)) %>%
   mutate(Seed = as.numeric(gsub(pattern = "a|b", replacement = "",
                                 x = Seed))) %>%
-  filter(Season >= 2000)
+  filter(Season >= 2000) %>%
+  filter(!(is.na(W)))
+
+
+#### Ken Pom Set Up ####
+
+# Load up kpom data and team spellings
+kpom <- read_csv(file = "data/our_data/kenpom.csv")
+spellings <- read_csv(file = "data/MDataFiles_Stage1/MTeamSpellings.csv")
+
+# Finding everyone in kpom who is not in the team name data
+no_names <- kpom %>%
+  mutate(name = tolower(name)) %>%
+  left_join(spellings, by = c("name" = "TeamNameSpelling")) %>%
+  filter(is.na(TeamID))
+# Renaming those
+spellings <- tibble(old_name = sort(unique(no_names$name)),
+                    new_name = c("arkansas-little rock",
+                                 "arkansas-pine bluff", "bethune-cookman",
+                                 "cal state bakersfield", "ill-chicago",
+                                 "liu brooklyn", "louisiana-lafayette",
+                                 "louisiana-monroe", "maryland-eastern shore",
+                                 "mississippi valley state",
+                                 "se missouri state", "sw missouri st.",
+                                 "texas st", "st. francis (ny)",
+                                 "st. francis (pa)", "tennessee-martin",
+                                 "texas a&m cc", "tex.-pan american",
+                                 "texas rio grande valley",
+                                 "winston-salem-state"
+                                 )) %>%
+  left_join(spellings, by = c("new_name" = "TeamNameSpelling")) %>%
+  select(TeamNameSpelling = old_name, TeamID) %>%
+  bind_rows(spellings)
+
+kpom <- kpom %>%
+  mutate(name = tolower(name)) %>%
+  left_join(spellings, by = c("name" = "TeamNameSpelling"))
+season_summary <- season_summary %>%
+  left_join(kpom, by = c("TeamID", "Season" = "year"))
+
 
 write_csv(season_summary, path = "data/our_data/starter_file.csv")
