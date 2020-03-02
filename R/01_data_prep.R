@@ -146,4 +146,42 @@ season_summary <- season_summary %>%
   left_join(kpom, by = c("TeamID", "Season" = "year"))
 
 
+#### Setting up data in tourney format ####
+
+winners <- tourney_results %>%
+  inner_join(season_summary, by = c("WTeamID" = "TeamID", "Season")) %>%
+  inner_join(season_summary, by = c("LTeamID" = "TeamID", "Season")) %>%
+  rename_at(.vars = vars(ends_with(".x")),
+            .funs = ~ paste0("team1_", .)) %>%
+  rename_at(.vars = vars(ends_with(".x")),
+            .funs = ~ gsub(pattern = ".x", replacement = "", x = .)) %>%
+  rename_at(.vars = vars(ends_with(".y")),
+            .funs = ~ paste0("team2_", .)) %>%
+  rename_at(.vars = vars(ends_with(".y")),
+            .funs = ~ gsub(pattern = ".y", replacement = "", x = .)) %>%
+  rename(team1_TeamID = WTeamID, team1_GameScore = WScore,
+         team2_TeamID = LTeamID, team2_GameScore = LScore) %>%
+  mutate(outcome = "W") %>%
+  sample_frac(.5)
+losers <- tourney_results %>%
+  inner_join(season_summary, by = c("WTeamID" = "TeamID", "Season")) %>%
+  inner_join(season_summary, by = c("LTeamID" = "TeamID", "Season")) %>%
+  rename_at(.vars = vars(ends_with(".x")),
+            .funs = ~ paste0("team2_", .)) %>%
+  rename_at(.vars = vars(ends_with(".x")),
+            .funs = ~ gsub(pattern = ".x", replacement = "", x = .)) %>%
+  rename_at(.vars = vars(ends_with(".y")),
+            .funs = ~ paste0("team1_", .)) %>%
+  rename_at(.vars = vars(ends_with(".y")),
+            .funs = ~ gsub(pattern = ".y", replacement = "", x = .)) %>%
+  rename(team2_TeamID = WTeamID, team2_GameScore = WScore,
+         team1_TeamID = LTeamID, team1_GameScore = LScore) %>%
+  mutate(outcome = "L")
+
+final <- winners %>%
+  bind_rows(losers %>%
+              filter(!(paste0(team1_TeamID, team2_TeamID) %in%
+                         paste0(winners$team2_TeamID, winners$team1_TeamID))))
+  
+
 write_csv(season_summary, path = "data/our_data/starter_file.csv")
